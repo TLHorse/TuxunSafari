@@ -164,7 +164,8 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Image(systemName: "map.fill").font(.largeTitle).foregroundStyle(.blue)
+                Image(nsImage: NSImage(contentsOf: Bundle.main.url(forResource: "AppIcon", withExtension: "icns")!) ?? NSImage())
+                    .resizable().frame(width: 48, height: 48)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("TuxunSafari").font(.title2.bold())
                     Text("Safari 图寻助手").foregroundStyle(.secondary)
