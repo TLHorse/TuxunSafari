@@ -2,6 +2,7 @@
 """Safari 图寻脚本：仅使用 AppleScript + 页面 JavaScript。"""
 import argparse
 import json
+import math
 import pathlib
 import subprocess
 import sys
@@ -38,15 +39,40 @@ end tell''' % (apple_literal(url), apple_literal(js))
     return json.loads(osascript(source))
 
 
+def settings(config, args):
+    mode = args.delay_mode or config.get('delay_mode', 'fixed')
+    if args.random_delay is not None:
+        mode = 'random'
+    elif args.delay is not None:
+        mode = 'fixed'
+    fixed = args.delay if args.delay is not None else float(config.get('delay_seconds', 10))
+    low, high = args.random_delay if args.random_delay is not None else (
+        float(config.get('delay_min_seconds', 8)), float(config.get('delay_max_seconds', 15)))
+    offset = args.offset_meters if args.offset_meters is not None else float(config.get('offset_meters', 100))
+    if mode not in ('fixed', 'random'):
+        raise ValueError('delay_mode 只能是 fixed 或 random')
+    if not all(math.isfinite(x) and 0 <= x <= 3600 for x in (fixed, low, high)):
+        raise ValueError('等待秒数必须是 0 到 3600 之间的有限数字')
+    if low > high:
+        raise ValueError('随机等待的最短时间不能大于最长时间')
+    if not math.isfinite(offset) or not 0 <= offset <= 100000:
+        raise ValueError('偏移半径必须是 0 到 100000 米之间的有限数字')
+    return {'delayMode': mode, 'delayMs': round(fixed * 1000),
+            'delayMinMs': round(low * 1000), 'delayMaxMs': round(high * 1000),
+            'offsetMeters': offset}
+
+
 def main():
     parser = argparse.ArgumentParser(description='连接 Safari 当前图寻标签页，读取全景坐标并延迟提交。')
-    parser.add_argument('--delay', type=float, help='读到坐标后等待的秒数，覆盖 config.json')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--delay', type=float, help='固定等待秒数，覆盖配置中的等待模式')
+    group.add_argument('--random-delay', nargs=2, type=float, metavar=('MIN', 'MAX'), help='每轮在此秒数区间随机等待')
+    parser.add_argument('--delay-mode', choices=('fixed', 'random'), help='使用配置中的固定或随机等待参数')
+    parser.add_argument('--offset-meters', type=float, help='随机偏移的最大半径（米），0 表示不偏移')
     parser.add_argument('--check', action='store_true', help='仅检查连接，不选点或提交')
     args = parser.parse_args()
     config = json.loads((BASE / 'config.json').read_text(encoding='utf-8'))
-    delay = args.delay if args.delay is not None else float(config.get('delay_seconds', 10))
-    if not 0 <= delay <= 3600:
-        raise ValueError('等待秒数应在 0 到 3600 之间')
+    options = settings(config, args)
     url = osascript('tell application "Safari" to get URL of current tab of front window')
     parsed = urlparse(url)
     if parsed.hostname != 'tuxun.fun' or not parsed.path.startswith(('/party/', '/solo/')):
@@ -55,9 +81,13 @@ def main():
         print(json.dumps(evaluate(url, 'JSON.stringify({url:location.href,title:document.title,text:document.body.innerText.slice(0,500)})'), ensure_ascii=False, indent=2))
         return
     run_id = str(uuid.uuid4())
-    js = (BASE / 'runner.js').read_text(encoding='utf-8').replace('__RUN_ID__', json.dumps(run_id)).replace('__DELAY_MS__', str(round(delay * 1000)))
+    js = (BASE / 'runner.js').read_text(encoding='utf-8').replace('__RUN_ID__', json.dumps(run_id)).replace('__OPTIONS__', json.dumps(options, allow_nan=False))
     print('已连接：' + url, flush=True)
-    print(f'每轮读到坐标后等待 {delay:g} 秒再提交。Ctrl+C 停止。', flush=True)
+    if options['delayMode'] == 'random':
+        print(f"每轮随机等待 {options['delayMinMs']/1000:g}–{options['delayMaxMs']/1000:g} 秒。", flush=True)
+    else:
+        print(f"每轮固定等待 {options['delayMs']/1000:g} 秒。", flush=True)
+    print(f"位置随机偏移半径：{options['offsetMeters']:g} 米。Ctrl+C 停止。", flush=True)
     print('请保持原图寻标签页打开。页面刷新或进入新对局后可重新运行。', flush=True)
     last_event = 0
     last_round = None

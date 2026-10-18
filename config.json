@@ -1,3 +1,7 @@
 {
-  "delay_seconds": 10
+  "delay_mode": "fixed",
+  "delay_seconds": 10,
+  "delay_min_seconds": 8,
+  "delay_max_seconds": 15,
+  "offset_meters": 100
 }

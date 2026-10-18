@@ -1,6 +1,17 @@
 (() => {
   const runId = __RUN_ID__;
-  const delayMs = __DELAY_MS__;
+  const options = __OPTIONS__;
+  function randomPosition(lat, lng, maxMeters) {
+    const distance = maxMeters * Math.sqrt(Math.random());
+    const bearing = Math.random() * 2 * Math.PI;
+    const angular = distance / 6371008.8;
+    const phi = lat * Math.PI / 180, lambda = lng * Math.PI / 180;
+    const newPhi = Math.asin(Math.max(-1, Math.min(1,
+      Math.sin(phi)*Math.cos(angular)+Math.cos(phi)*Math.sin(angular)*Math.cos(bearing))));
+    const newLambda = lambda + Math.atan2(Math.sin(bearing)*Math.sin(angular)*Math.cos(phi),
+      Math.cos(angular)-Math.sin(phi)*Math.sin(newPhi));
+    return {lat:newPhi*180/Math.PI,lng:((newLambda*180/Math.PI+540)%360)-180,distance};
+  }
   if (!/(^|\.)tuxun\.fun$/.test(location.hostname)) return JSON.stringify({error:'当前页面不是图寻'});
   if (!window.__tuxunStandalone || window.__tuxunStandalone.id !== runId) {
     // Replace the earlier Codex-injected interval if this page still has one.
@@ -70,8 +81,13 @@
         if(window.__tuxunStandalone?.id!==runId)return;
         const data=result.data;
         if(!result.success||!Number.isFinite(data?.lat)||!Number.isFinite(data?.lng))throw Error('全景 API 未返回有效经纬度');
-        rec.lat=data.lat;rec.lng=data.lng;rec.phase='ready';rec.readyAt=Date.now();
-        event('已读取坐标，开始等待',{round:round.round,lat:rec.lat,lng:rec.lng,delaySeconds:delayMs/1000});
+        const position=randomPosition(data.lat,data.lng,options.offsetMeters);
+        rec.lat=position.lat;rec.lng=position.lng;
+        rec.delayMs=options.delayMode==='random'
+          ? options.delayMinMs+Math.random()*(options.delayMaxMs-options.delayMinMs) : options.delayMs;
+        rec.phase='ready';rec.readyAt=Date.now();
+        event('已生成提交位置，开始等待',{round:round.round,lat:rec.lat,lng:rec.lng,
+          offsetMeters:Math.round(position.distance*10)/10,delaySeconds:Math.round(rec.delayMs/100)/10});
       })
       .catch(error=>{rec.phase='error';rec.error=String(error);event('读取失败',{round:round.round,error:rec.error})});
   } else if(rec.phase==='ready') {
@@ -79,7 +95,7 @@
     m.setPickCoord({latitude:rec.lat,longitude:rec.lng});
     rec.phase='waiting';
   } else if(rec.phase==='waiting') {
-    if(Date.now()-rec.readyAt>=delayMs) {
+    if(Date.now()-rec.readyAt>=rec.delayMs) {
       if(!m.pickCoord || Math.abs(m.pickCoord.latitude-rec.lat)>1e-8 || Math.abs(m.pickCoord.longitude-rec.lng)>1e-8) {
         m.setPickCoord({latitude:rec.lat,longitude:rec.lng});
       } else {
