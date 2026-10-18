@@ -111,3 +111,18 @@ python3 tuxun.py --delay 10 --offset-meters 0
 ```
 
 等待参数允许 0–3600 秒，偏移半径允许 0–100000 米。随机区间的最短时间不能超过最长时间。日志显示本轮生成的坐标、偏移距离和等待时长；随机值在读取坐标后生成一次，重试提交时不会重新抽取。以上等待时间仍受轮询误差影响。
+
+## macOS 图形界面（SwiftUI）
+
+`gui/TuxunSafari.swift` 提供原生 macOS 界面，可以选择固定或随机等待、设置偏移半径、保存默认值，以及启动、停止和查看日志。界面通过子进程复用 Python 脚本，因此仍需安装 Python 3，并启用 Safari 的 Apple 事件 JavaScript 权限。
+
+本地构建需要 Xcode Command Line Tools 或 Xcode：
+
+```sh
+./gui/build.command
+open dist/TuxunSafari.app
+```
+
+构建脚本按当前 Mac 的架构编译，最低支持 macOS 13。生成的应用使用本地临时签名，未经过 Apple 公证。
+
+GUI 参数保存在应用偏好设置中，与命令行的 `config.json` 独立；点击“保存默认值”或启动时保存。运行脚本和日志位于 `~/Library/Application Support/TuxunSafari/`，可通过“打开日志目录”查看。点击停止或关闭窗口会结束后台进程；停止时已发给 Safari 的请求可能仍会完成。
